@@ -142,6 +142,14 @@ export class MasterService {
     await this.makeApiCall('/element/hide', { screenId, elementId });
   }
 
+  // Sync timer state to all clients
+  async syncTimerState(currentTime: number, initialTime: number, isRunning: boolean, mode: 'countdown' | 'stopwatch') {
+    this.state.globalTimer = { currentTime, initialTime, isRunning, mode };
+    await this.makeApiCall('/timer/sync', { 
+      timer_state: { currentTime, initialTime, isRunning, mode }
+    });
+  }
+
   // Utility methods
   private formatTime(seconds: number): string {
     const hours = Math.floor(seconds / 3600);

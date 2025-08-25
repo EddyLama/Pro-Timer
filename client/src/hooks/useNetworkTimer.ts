@@ -100,6 +100,12 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
       }
     });
 
+    networkService.onMessage('sync_timer', (message: NetworkMessage) => {
+      if (message.timer_state) {
+        setTimer(prev => ({ ...prev, ...message.timer_state }));
+      }
+    });
+
     networkService.onMessage('initial_state', (message: NetworkMessage) => {
       if (message.timer_state) {
         setTimer(prev => ({ ...prev, ...message.timer_state }));
@@ -117,9 +123,9 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
     };
   }, [screenId, networkService]);
 
-  // Local timer update loop (for smooth display)
+  // Local timer update loop (for smooth display between server syncs)
   useEffect(() => {
-    if (!timer.isRunning) return;
+    if (!timer.isRunning || !isConnected) return;
 
     const interval = setInterval(() => {
       setTimer(prev => {
@@ -140,7 +146,7 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
     }, 100); // Update every 100ms for smooth display
 
     return () => clearInterval(interval);
-  }, [timer.isRunning]);
+  }, [timer.isRunning, isConnected]);
 
   const getTimerColor = useCallback((): string => {
     if (timer.mode === 'stopwatch') return 'text-blue-400';

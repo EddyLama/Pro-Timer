@@ -34,9 +34,10 @@ export const useMasterControl = (initialSettings: TimerSettings) => {
           newTime = prev.currentTime + 0.1;
         }
 
-        // Update master service state
-        const masterState = masterService.getState();
-        masterState.globalTimer.currentTime = newTime;
+        // Broadcast timer updates to all clients every second
+        if (Math.floor(newTime * 10) % 10 === 0) {
+          masterService.syncTimerState(newTime, prev.initialTime, true, prev.mode);
+        }
 
         return { ...prev, currentTime: newTime };
       });

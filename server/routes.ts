@@ -193,6 +193,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
+  // Timer sync endpoint for real-time updates
+  app.post('/api/timer/sync', (req, res) => {
+    const { timer_state } = req.body;
+    if (timer_state) {
+      globalTimer.currentTime = timer_state.currentTime;
+      globalTimer.initialTime = timer_state.initialTime;
+      globalTimer.isRunning = timer_state.isRunning;
+      globalTimer.mode = timer_state.mode;
+      
+      broadcastToAll({
+        command: 'sync_timer',
+        timer_state: { ...globalTimer }
+      });
+    }
+    res.json({ success: true });
+  });
+
   app.post('/api/message/show', (req, res) => {
     const { screenId, message } = req.body;
     if (screenId === 'all') {
