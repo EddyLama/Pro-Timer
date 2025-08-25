@@ -7,7 +7,7 @@ export class NetworkService {
   private messageHandlers: Map<string, (message: NetworkMessage) => void> = new Map();
   private connectionHandlers: Array<(connected: boolean) => void> = [];
   
-  constructor(private serverUrl: string = 'ws://localhost:8081') {}
+  constructor(private serverUrl: string = `ws://${window.location.host}/ws`) {}
 
   // Client-side connection
   connect(screenId: string): Promise<void> {
