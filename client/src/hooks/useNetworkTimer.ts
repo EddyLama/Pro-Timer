@@ -14,11 +14,21 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
   const [settings, setSettings] = useState<TimerSettings>(initialSettings);
   const [networkService] = useState(() => new NetworkService());
   const [isConnected, setIsConnected] = useState(false);
+  
+  // For static deployment (Netlify), simulate connected state
+  const isStatic = !window.location.host.includes('localhost') && !window.location.host.includes('replit');
   const [displayMessage, setDisplayMessage] = useState<string>('');
   const [visibleElements, setVisibleElements] = useState<Set<string>>(new Set());
 
   // Initialize network connection
   useEffect(() => {
+    if (isStatic) {
+      // In static mode, simulate connection for demo purposes
+      setIsConnected(true);
+      setVisibleElements(new Set(['timer', 'controls', 'presets', 'header']));
+      return;
+    }
+
     const initNetwork = async () => {
       try {
         await networkService.connect(screenId);
@@ -80,14 +90,14 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
 
     networkService.onMessage('show_element', (message: NetworkMessage) => {
       if (message.visible_element) {
-        setVisibleElements(prev => new Set([...prev, message.visible_element!]));
+        setVisibleElements(prev => new Set([...Array.from(prev), message.visible_element!]));
       }
     });
 
     networkService.onMessage('hide_element', (message: NetworkMessage) => {
       if (message.visible_element) {
         setVisibleElements(prev => {
-          const newSet = new Set(prev);
+          const newSet = new Set(Array.from(prev));
           newSet.delete(message.visible_element!);
           return newSet;
         });

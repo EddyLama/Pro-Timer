@@ -151,6 +151,9 @@ function App() {
             <p>• Open <strong>?mode=client&screenId=screen_1</strong> in new tab for client view</p>
             <p>• Use Master Controls panel (bottom right) to send messages and control elements</p>
             <p>• Element visibility controls: Show/Hide timer, controls, presets on client screens</p>
+            {(!window.location.host.includes('localhost') && !window.location.host.includes('replit')) && (
+              <p>• <strong>Static Mode:</strong> Real-time sync requires backend server (works fully on Replit)</p>
+            )}
           </div>
         )}
       </footer>

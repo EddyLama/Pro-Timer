@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TimerState, TimerSettings } from '../types/timer';
 import { MasterService } from '../services/MasterService';
+import { StaticMasterService } from '../services/StaticMasterService';
 
 export const useMasterControl = (initialSettings: TimerSettings) => {
   const [timer, setTimer] = useState<TimerState>({
@@ -11,7 +12,9 @@ export const useMasterControl = (initialSettings: TimerSettings) => {
   });
 
   const [settings, setSettings] = useState<TimerSettings>(initialSettings);
-  const [masterService] = useState(() => new MasterService());
+  // Use static service for Netlify deployment (no backend)
+  const isStatic = !window.location.host.includes('localhost') && !window.location.host.includes('replit');
+  const [masterService] = useState(() => isStatic ? new StaticMasterService() : new MasterService());
   const [connectedClients, setConnectedClients] = useState<string[]>([]);
 
   // Local timer update loop for master display
@@ -47,13 +50,19 @@ export const useMasterControl = (initialSettings: TimerSettings) => {
 
   // Periodically update connected clients list
   useEffect(() => {
+    if (isStatic) {
+      // For static deployment, show demo clients
+      setConnectedClients(['demo_screen_1', 'demo_screen_2']);
+      return;
+    }
+
     const interval = setInterval(() => {
       const clients = masterService.getConnectedClients();
       setConnectedClients(clients.map(client => client.screenId));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [masterService]);
+  }, [masterService, isStatic]);
 
   const startTimer = useCallback(async () => {
     setTimer(prev => ({ ...prev, isRunning: true }));
