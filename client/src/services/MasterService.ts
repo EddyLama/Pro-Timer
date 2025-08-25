@@ -13,173 +13,133 @@ export class MasterService {
     visibleElements: new Map()
   };
 
-  private ws: WebSocket | null = null;
-  private serverUrl: string = 'ws://localhost:8080';
+  private baseUrl: string = `${window.location.protocol}//${window.location.host}`;
 
   constructor() {
-    this.startServer();
+    this.initializeService();
   }
 
-  private async startServer() {
-    // In a real implementation, this would start a WebSocket server
-    // For now, we'll simulate the master connection
+  private async initializeService() {
     console.log('Master service initialized');
+    // Poll for connected clients periodically
+    this.pollConnectedClients();
   }
 
-  // Broadcast to all clients
-  broadcastToAll(message: Omit<NetworkMessage, 'target'>) {
-    const fullMessage: NetworkMessage = {
-      ...message,
-      target: 'all',
-      timestamp: Date.now()
-    };
-    
-    this.state.clients.forEach((client) => {
-      if (client.connected && client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(JSON.stringify(fullMessage));
+  private async pollConnectedClients() {
+    const poll = async () => {
+      try {
+        const response = await fetch(`${this.baseUrl}/api/clients`);
+        const clients = await response.json();
+        
+        // Update local state
+        this.state.clients.clear();
+        clients.forEach((client: any) => {
+          this.state.clients.set(client.id, {
+            ...client,
+            ws: null, // Not needed for master service
+            connected: client.connected
+          });
+        });
+      } catch (error) {
+        console.error('Failed to fetch clients:', error);
       }
-    });
+    };
+
+    // Poll every 2 seconds
+    setInterval(poll, 2000);
+    // Initial poll
+    poll();
   }
 
-  // Send to specific client
-  sendToClient(screenId: string, message: Omit<NetworkMessage, 'target'>) {
-    const client = this.state.clients.get(screenId);
-    if (client && client.connected && client.ws.readyState === WebSocket.OPEN) {
-      const fullMessage: NetworkMessage = {
-        ...message,
-        target: screenId,
-        timestamp: Date.now()
-      };
-      client.ws.send(JSON.stringify(fullMessage));
+  // Send API request to server
+  private async makeApiCall(endpoint: string, data: any = {}) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      return await response.json();
+    } catch (error) {
+      console.error(`API call failed for ${endpoint}:`, error);
+      return null;
     }
   }
 
+  // Send to specific client (handled by server API)
+  private async sendToClient(screenId: string, action: string, data: any = {}) {
+    // This is now handled through the server API endpoints
+    console.log(`Sending ${action} to client ${screenId}`, data);
+  }
+
   // Timer control methods
-  startTimer() {
+  async startTimer() {
     this.state.globalTimer.isRunning = true;
-    this.broadcastToAll({
-      command: 'start_timer',
-      timer_state: { ...this.state.globalTimer }
-    });
+    await this.makeApiCall('/timer/start');
   }
 
-  pauseTimer() {
+  async pauseTimer() {
     this.state.globalTimer.isRunning = false;
-    this.broadcastToAll({
-      command: 'pause_timer',
-      timer_state: { ...this.state.globalTimer }
-    });
+    await this.makeApiCall('/timer/pause');
   }
 
-  stopTimer() {
+  async stopTimer() {
     this.state.globalTimer.isRunning = false;
     this.state.globalTimer.currentTime = this.state.globalTimer.mode === 'countdown' 
       ? this.state.globalTimer.initialTime 
       : 0;
-    this.broadcastToAll({
-      command: 'stop_timer',
-      timer_state: { ...this.state.globalTimer }
-    });
+    await this.makeApiCall('/timer/stop');
   }
 
-  resetTimer() {
+  async resetTimer() {
     this.state.globalTimer.isRunning = false;
     this.state.globalTimer.currentTime = this.state.globalTimer.mode === 'countdown' 
       ? this.state.globalTimer.initialTime 
       : 0;
-    this.broadcastToAll({
-      command: 'reset_timer',
-      timer_state: { ...this.state.globalTimer }
-    });
+    await this.makeApiCall('/timer/reset');
   }
 
-  setTime(seconds: number) {
+  async setTime(seconds: number) {
     this.state.globalTimer.currentTime = seconds;
     this.state.globalTimer.initialTime = seconds;
-    this.broadcastToAll({
-      command: 'update_time',
-      time: this.formatTime(seconds),
-      timer_state: { ...this.state.globalTimer }
-    });
+    await this.makeApiCall('/timer/set-time', { seconds });
   }
 
-  setMode(mode: 'countdown' | 'stopwatch') {
+  async setMode(mode: 'countdown' | 'stopwatch') {
     this.state.globalTimer.mode = mode;
     this.state.globalTimer.currentTime = mode === 'countdown' 
       ? this.state.globalTimer.initialTime 
       : 0;
-    this.broadcastToAll({
-      command: 'set_mode',
-      timer_mode: mode,
-      timer_state: { ...this.state.globalTimer }
-    });
+    await this.makeApiCall('/timer/set-mode', { mode });
   }
 
   // Message control methods
-  showMessage(screenId: string, message: string) {
+  async showMessage(screenId: string, message: string) {
     this.state.messages.set(screenId, message);
-    if (screenId === 'all') {
-      this.broadcastToAll({
-        command: 'show_message',
-        message
-      });
-    } else {
-      this.sendToClient(screenId, {
-        command: 'show_message',
-        message
-      });
-    }
+    await this.makeApiCall('/message/show', { screenId, message });
   }
 
-  hideMessage(screenId: string) {
+  async hideMessage(screenId: string) {
     this.state.messages.delete(screenId);
-    if (screenId === 'all') {
-      this.broadcastToAll({
-        command: 'hide_message'
-      });
-    } else {
-      this.sendToClient(screenId, {
-        command: 'hide_message'
-      });
-    }
+    await this.makeApiCall('/message/hide', { screenId });
   }
 
   // Element visibility control
-  showElement(screenId: string, elementId: string) {
+  async showElement(screenId: string, elementId: string) {
     if (!this.state.visibleElements.has(screenId)) {
       this.state.visibleElements.set(screenId, new Set());
     }
     this.state.visibleElements.get(screenId)!.add(elementId);
-    
-    if (screenId === 'all') {
-      this.broadcastToAll({
-        command: 'show_element',
-        visible_element: elementId
-      });
-    } else {
-      this.sendToClient(screenId, {
-        command: 'show_element',
-        visible_element: elementId
-      });
-    }
+    await this.makeApiCall('/element/show', { screenId, elementId });
   }
 
-  hideElement(screenId: string, elementId: string) {
+  async hideElement(screenId: string, elementId: string) {
     if (this.state.visibleElements.has(screenId)) {
       this.state.visibleElements.get(screenId)!.delete(elementId);
     }
-    
-    if (screenId === 'all') {
-      this.broadcastToAll({
-        command: 'hide_element',
-        visible_element: elementId
-      });
-    } else {
-      this.sendToClient(screenId, {
-        command: 'hide_element',
-        visible_element: elementId
-      });
-    }
+    await this.makeApiCall('/element/hide', { screenId, elementId });
   }
 
   // Utility methods

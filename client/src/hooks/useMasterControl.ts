@@ -55,68 +55,68 @@ export const useMasterControl = (initialSettings: TimerSettings) => {
     return () => clearInterval(interval);
   }, [masterService]);
 
-  const startTimer = useCallback(() => {
+  const startTimer = useCallback(async () => {
     setTimer(prev => ({ ...prev, isRunning: true }));
-    masterService.startTimer();
+    await masterService.startTimer();
   }, [masterService]);
 
-  const pauseTimer = useCallback(() => {
+  const pauseTimer = useCallback(async () => {
     setTimer(prev => ({ ...prev, isRunning: false }));
-    masterService.pauseTimer();
+    await masterService.pauseTimer();
   }, [masterService]);
 
-  const stopTimer = useCallback(() => {
+  const stopTimer = useCallback(async () => {
     setTimer(prev => ({
       ...prev,
       isRunning: false,
       currentTime: prev.mode === 'countdown' ? prev.initialTime : 0
     }));
-    masterService.stopTimer();
+    await masterService.stopTimer();
   }, [masterService]);
 
-  const resetTimer = useCallback(() => {
+  const resetTimer = useCallback(async () => {
     setTimer(prev => ({
       ...prev,
       isRunning: false,
       currentTime: prev.mode === 'countdown' ? prev.initialTime : 0
     }));
-    masterService.resetTimer();
+    await masterService.resetTimer();
   }, [masterService]);
 
-  const setTime = useCallback((seconds: number) => {
+  const setTime = useCallback(async (seconds: number) => {
     setTimer(prev => ({
       ...prev,
       currentTime: seconds,
       initialTime: seconds,
       isRunning: false
     }));
-    masterService.setTime(seconds);
+    await masterService.setTime(seconds);
   }, [masterService]);
 
-  const setMode = useCallback((mode: 'countdown' | 'stopwatch') => {
+  const setMode = useCallback(async (mode: 'countdown' | 'stopwatch') => {
     setTimer(prev => ({
       ...prev,
       mode,
       isRunning: false,
       currentTime: mode === 'countdown' ? prev.initialTime : 0
     }));
-    masterService.setMode(mode);
+    await masterService.setMode(mode);
   }, [masterService]);
 
-  const sendMessage = useCallback((screenId: string, message: string) => {
-    masterService.showMessage(screenId, message);
+  const sendMessage = useCallback(async (screenId: string, message: string) => {
+    await masterService.showMessage(screenId, message);
   }, [masterService]);
 
-  const hideMessage = useCallback((screenId: string) => {
-    masterService.hideMessage(screenId);
+  const hideMessage = useCallback(async (screenId: string) => {
+    await masterService.hideMessage(screenId);
   }, [masterService]);
 
-  const showElement = useCallback((screenId: string, elementId: string) => {
-    masterService.showElement(screenId, elementId);
+  const showElement = useCallback(async (screenId: string, elementId: string) => {
+    await masterService.showElement(screenId, elementId);
   }, [masterService]);
 
-  const hideElement = useCallback((screenId: string, elementId: string) => {
-    masterService.hideElement(screenId, elementId);
+  const hideElement = useCallback(async (screenId: string, elementId: string) => {
+    await masterService.hideElement(screenId, elementId);
   }, [masterService]);
 
   const getTimerColor = useCallback((): string => {

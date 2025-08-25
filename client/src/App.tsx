@@ -19,7 +19,8 @@ const initialSettings: TimerSettings = {
 
 // Determine if this is master or client mode based on URL params
 const urlParams = new URLSearchParams(window.location.search);
-const isMaster = urlParams.get('mode') === 'master';
+// Default to master mode unless explicitly set to client
+const isMaster = urlParams.get('mode') !== 'client';
 const screenId = urlParams.get('screenId') || 'screen_1';
 
 function App() {
@@ -144,6 +145,14 @@ function App() {
             ? 'Master Control - Managing all connected displays' 
             : 'Client Display - Controlled remotely'}
         </p>
+        {isMaster && (
+          <div className="mt-2 text-xs text-gray-600">
+            <p>📖 <strong>Testing Guide:</strong></p>
+            <p>• Open <strong>?mode=client&screenId=screen_1</strong> in new tab for client view</p>
+            <p>• Use Master Controls panel (bottom right) to send messages and control elements</p>
+            <p>• Element visibility controls: Show/Hide timer, controls, presets on client screens</p>
+          </div>
+        )}
       </footer>
     </div>
   );

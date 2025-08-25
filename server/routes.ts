@@ -235,5 +235,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(connectedClients);
   });
 
+  // Element visibility control endpoints
+  app.post('/api/element/show', (req, res) => {
+    const { screenId, elementId } = req.body;
+    if (screenId === 'all') {
+      broadcastToAll({
+        command: 'show_element',
+        visible_element: elementId
+      });
+    } else {
+      sendToClient(screenId, {
+        command: 'show_element',
+        visible_element: elementId
+      });
+    }
+    res.json({ success: true });
+  });
+
+  app.post('/api/element/hide', (req, res) => {
+    const { screenId, elementId } = req.body;
+    if (screenId === 'all') {
+      broadcastToAll({
+        command: 'hide_element',
+        visible_element: elementId
+      });
+    } else {
+      sendToClient(screenId, {
+        command: 'hide_element',
+        visible_element: elementId
+      });
+    }
+    res.json({ success: true });
+  });
+
   return httpServer;
 }
