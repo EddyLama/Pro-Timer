@@ -1,14 +1,14 @@
-const WebSocket = require('ws');
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
+import { WebSocketServer } from 'ws';
+import express from 'express';
+import http from 'http';
+import cors from 'cors';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocketServer({ server });
 
 // Store connected clients
 const clients = new Map();
@@ -95,7 +95,7 @@ function broadcast(message, targetScreenId = 'all') {
   };
 
   clients.forEach((client) => {
-    if (client.connected && client.ws.readyState === WebSocket.OPEN) {
+    if (client.connected && client.ws.readyState === 1) { // WebSocket.OPEN = 1
       if (targetScreenId === 'all' || client.screenId === targetScreenId) {
         client.ws.send(JSON.stringify({
           ...messageWithTimestamp,
@@ -234,6 +234,6 @@ setInterval(() => {
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`WebSocket server running on port ${PORT}`);
-  console.log(`Master Control: http://localhost:3000?mode=master`);
-  console.log(`Client Display: http://localhost:3000?screenId=screen_1`);
+  console.log(`Master Control: http://localhost:5173/?mode=master`);
+  console.log(`Client Display: http://localhost:5173/?screenId=screen_1`);
 });

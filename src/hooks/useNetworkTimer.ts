@@ -94,6 +94,16 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
       }
     });
 
+    networkService.onMessage('sync_state', (message: NetworkMessage) => {
+      if (message.timer_state) {
+        setTimer(prev => ({ ...prev, ...message.timer_state }));
+      }
+    });
+
+    networkService.onMessage('pong', () => {
+      // Pong is handled automatically, no action needed
+    });
+
     networkService.onConnectionChange(setIsConnected);
 
     return () => {
