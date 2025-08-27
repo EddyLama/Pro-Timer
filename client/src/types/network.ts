@@ -11,6 +11,7 @@ export interface NetworkMessage {
     isRunning: boolean;
     mode: 'countdown' | 'stopwatch';
   };
+  label?: string;
   timestamp?: number;
 }
 

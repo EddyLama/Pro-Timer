@@ -16,6 +16,7 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
   const [isConnected, setIsConnected] = useState(false);
   const [displayMessage, setDisplayMessage] = useState<string>('');
   const [visibleElements, setVisibleElements] = useState<Set<string>>(new Set());
+  const [timerLabel, setTimerLabel] = useState<string>('');
 
   // Initialize network connection
   useEffect(() => {
@@ -46,7 +47,7 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
 
     networkService.onMessage('stop_timer', (message: NetworkMessage) => {
       if (message.timer_state) {
-        setTimer(prev => ({ ...prev, ...message.timer_state, isRunning: false }));
+        setTimer(prev => ({ ...prev, ...message.timer_state, isRunning: false, currentTime: 0 }));
       }
     });
 
@@ -59,6 +60,9 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
     networkService.onMessage('update_time', (message: NetworkMessage) => {
       if (message.timer_state) {
         setTimer(prev => ({ ...prev, ...message.timer_state }));
+      }
+      if (message.label !== undefined) {
+        setTimerLabel(message.label);
       }
     });
 
@@ -133,20 +137,21 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
 
         let newTime: number;
         if (prev.mode === 'countdown') {
-          newTime = Math.max(0, prev.currentTime - 0.1);
-          if (newTime <= 0) {
+          newTime = prev.currentTime - 0.01;
+          // Allow negative values when overtime is enabled
+          if (newTime <= 0 && !settings.allowOvertime) {
             return { ...prev, currentTime: 0, isRunning: false };
           }
         } else {
-          newTime = prev.currentTime + 0.1;
+          newTime = prev.currentTime + 0.01;
         }
 
         return { ...prev, currentTime: newTime };
       });
-    }, 100); // Update every 100ms for smooth display
+    }, 10); // Update every 10ms for smooth milliseconds display
 
     return () => clearInterval(interval);
-  }, [timer.isRunning, isConnected]);
+  }, [timer.isRunning, isConnected, settings.allowOvertime]);
 
   const getTimerColor = useCallback((): string => {
     if (timer.mode === 'stopwatch') return 'text-blue-400';
@@ -172,6 +177,7 @@ export const useNetworkTimer = (screenId: string, initialSettings: TimerSettings
     setSettings,
     isConnected,
     displayMessage,
+    timerLabel,
     getTimerColor,
     isElementVisible,
     networkService

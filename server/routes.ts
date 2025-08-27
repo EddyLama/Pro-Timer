@@ -16,6 +16,7 @@ interface ClientConnection {
   ws: any;
   connected: boolean;
   lastPing: number;
+  connectionTime: number;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -44,6 +45,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const clients = new Map<string, ClientConnection>();
   const messages = new Map<string, string>();
   const visibleElements = new Map<string, Set<string>>();
+  const messageQueue = new Map<string, any[]>();
 
   // Helper functions
   function broadcastToAll(message: any) {
@@ -69,6 +71,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: Date.now()
       };
       client.ws.send(JSON.stringify(fullMessage));
+    } else {
+      // Queue message for offline client
+      if (!messageQueue.has(screenId)) {
+        messageQueue.set(screenId, []);
+      }
+      messageQueue.get(screenId)!.push({
+        ...message,
+        target: screenId,
+        timestamp: Date.now()
+      });
     }
   }
 
@@ -83,7 +95,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       screenId,
       ws,
       connected: true,
-      lastPing: Date.now()
+      lastPing: Date.now(),
+      connectionTime: Date.now()
     };
     
     clients.set(clientId, client);
@@ -95,6 +108,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       timer_state: globalTimer,
       timestamp: Date.now()
     }));
+
+    // Send queued messages if any
+    const queuedMessages = messageQueue.get(screenId) || [];
+    if (queuedMessages.length > 0) {
+      queuedMessages.forEach(message => {
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify(message));
+        }
+      });
+      messageQueue.delete(screenId);
+    }
 
     ws.on('message', (data) => {
       try {
@@ -146,8 +170,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/timer/stop', (req, res) => {
     globalTimer.isRunning = false;
+    // Keep countdown at 0 when stopped instead of jumping back to initial time
     globalTimer.currentTime = globalTimer.mode === 'countdown' 
-      ? globalTimer.initialTime 
+      ? 0 
       : 0;
     broadcastToAll({
       command: 'stop_timer',
@@ -169,12 +194,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/timer/set-time', (req, res) => {
-    const { seconds } = req.body;
+    const { seconds, label } = req.body;
     globalTimer.currentTime = seconds;
     globalTimer.initialTime = seconds;
     broadcastToAll({
       command: 'update_time',
-      timer_state: { ...globalTimer }
+      timer_state: { ...globalTimer },
+      label
     });
     res.json({ success: true });
   });
@@ -247,9 +273,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: client.id,
         screenId: client.screenId,
         connected: client.connected,
-        lastPing: client.lastPing
+        lastPing: client.lastPing,
+        connectionTime: client.connectionTime || Date.now(),
+        latency: Date.now() - client.lastPing,
+        status: (Date.now() - client.lastPing) < 35000 ? 'healthy' : 'unresponsive'
       }));
     res.json(connectedClients);
+  });
+
+  app.get('/api/clients/:screenId', (req, res) => {
+    const { screenId } = req.params;
+    const client = Array.from(clients.values()).find(c => c.screenId === screenId);
+    
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    res.json({
+      id: client.id,
+      screenId: client.screenId,
+      connected: client.connected,
+      lastPing: client.lastPing,
+      connectionTime: client.connectionTime || Date.now(),
+      latency: Date.now() - client.lastPing,
+      status: (Date.now() - client.lastPing) < 35000 ? 'healthy' : 'unresponsive'
+    });
   });
 
   // Element visibility control endpoints
@@ -283,6 +331,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
     res.json({ success: true });
+  });
+
+  // Health check endpoints
+  app.get('/api/health', (req, res) => {
+    const totalClients = clients.size;
+    const connectedClients = Array.from(clients.values()).filter(c => c.connected).length;
+    const healthyClients = Array.from(clients.values()).filter(c =>
+      c.connected && (Date.now() - c.lastPing) < 35000
+    ).length;
+    
+    res.json({
+      status: 'healthy',
+      timestamp: Date.now(),
+      clients: {
+        total: totalClients,
+        connected: connectedClients,
+        healthy: healthyClients
+      },
+      uptime: process.uptime()
+    });
+  });
+
+  app.get('/api/health/clients', (req, res) => {
+    const clientHealth = Array.from(clients.values()).map(client => ({
+      id: client.id,
+      screenId: client.screenId,
+      connected: client.connected,
+      lastPing: client.lastPing,
+      connectionTime: client.connectionTime,
+      latency: Date.now() - client.lastPing,
+      status: (Date.now() - client.lastPing) < 35000 ? 'healthy' : 'unresponsive',
+      queuedMessages: (messageQueue.get(client.screenId) || []).length
+    }));
+    
+    res.json({
+      clients: clientHealth,
+      timestamp: Date.now()
+    });
+  });
+
+  // Network diagnostics endpoint
+  app.post('/api/diagnostics/latency', (req, res) => {
+    const { screenId } = req.body;
+    const client = Array.from(clients.values()).find(c => c.screenId === screenId);
+    
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    const latency = Date.now() - client.lastPing;
+    res.json({
+      screenId,
+      latency,
+      status: latency < 35000 ? 'healthy' : 'unresponsive',
+      lastPing: client.lastPing,
+      connectionTime: client.connectionTime
+    });
+  });
+
+  // Client list endpoint
+  app.get('/api/clients', (req, res) => {
+    const clientList = Array.from(clients.values()).map(client => ({
+      id: client.id,
+      screenId: client.screenId,
+      connected: client.connected,
+      lastPing: client.lastPing,
+      connectionTime: client.connectionTime,
+      latency: Date.now() - client.lastPing,
+      status: (Date.now() - client.lastPing) < 35000 ? 'healthy' : 'unresponsive'
+    }));
+    
+    res.json(clientList);
   });
 
   return httpServer;

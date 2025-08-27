@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNetworkTimer } from './hooks/useNetworkTimer';
 import { useMasterControl } from './hooks/useMasterControl';
 import { Timer } from './components/Timer';
@@ -8,13 +8,19 @@ import { Settings } from './components/Settings';
 import { NetworkStatus } from './components/NetworkStatus';
 import { MasterControls } from './components/MasterControls';
 import { MessageOverlay } from './components/MessageOverlay';
+import { LapTimes } from './components/LapTimes';
 import { TimerSettings } from './types/timer';
+import { BroadcastMessages } from './components/BroadcastMessages';
+import { loadSettings, saveSettings } from './utils/storage';
 
-const initialSettings: TimerSettings = {
+const defaultSettings: TimerSettings = {
   warningThreshold: 60, // 1 minute
   dangerThreshold: 30,  // 30 seconds
   showMilliseconds: false,
-  autoReset: false
+  showHours: false,
+  autoReset: false,
+  allowOvertime: true,
+  soundsEnabled: true
 };
 
 // Determine if this is master or client mode based on URL params
@@ -23,6 +29,15 @@ const isMaster = urlParams.get('mode') === 'master' || urlParams.get('mode') ===
 const screenId = urlParams.get('screenId') || 'screen_1';
 
 function App() {
+  const [lapTimes, setLapTimes] = useState<Array<{ lapNumber: number; time: number; splitTime: number }>>([]);
+  const [lastLapTime, setLastLapTime] = useState(0);
+  
+  // Load saved settings
+  const [initialSettings] = useState(() => {
+    const savedSettings = loadSettings();
+    return savedSettings || defaultSettings;
+  });
+  
   // Use different hooks based on mode
   const masterControl = isMaster ? useMasterControl(initialSettings) : null;
   const networkTimer = !isMaster ? useNetworkTimer(screenId, initialSettings) : null;
@@ -32,6 +47,7 @@ function App() {
   const settings = isMaster ? masterControl!.settings : networkTimer!.settings;
   const setSettings = isMaster ? masterControl!.setSettings : networkTimer!.setSettings;
   const getTimerColor = isMaster ? masterControl!.getTimerColor : networkTimer!.getTimerColor;
+  const showProgress = isMaster ? true : true;
   
   // Master-only functions
   const startTimer = isMaster ? masterControl!.startTimer : () => {};
@@ -41,40 +57,77 @@ function App() {
   const setTime = isMaster ? masterControl!.setTime : () => {};
   const setMode = isMaster ? masterControl!.setMode : () => {};
 
+  // Save settings when they change
+  useEffect(() => {
+    if (settings) {
+      saveSettings(settings);
+    }
+  }, [settings]);
+  
+  const handleLap = () => {
+    if (isMaster && timer.mode === 'stopwatch' && timer.isRunning) {
+      const lapNumber = lapTimes.length + 1;
+      const currentTime = timer.currentTime;
+      const splitTime = currentTime - lastLapTime;
+      
+      setLapTimes(prev => [...prev, { lapNumber, time: currentTime, splitTime }]);
+      setLastLapTime(currentTime);
+    }
+  };
+
+  const clearLaps = () => {
+    setLapTimes([]);
+    setLastLapTime(0);
+  };
+
+  const handleReset = () => {
+    resetTimer();
+    clearLaps();
+  };
+
   // Network status
   const isConnected = isMaster ? true : networkTimer!.isConnected;
   const connectedClients = isMaster ? masterControl!.connectedClients : [];
   const displayMessage = !isMaster ? networkTimer!.displayMessage : '';
   const isElementVisible = !isMaster ? networkTimer!.isElementVisible : () => true;
+  const timerLabel = !isMaster ? networkTimer!.timerLabel : '';
 
   // CLIENT MODE - Full screen timer only
   if (!isMaster) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex flex-col items-center justify-center">
         {/* Connection Status for Clients */}
-        <div className="fixed top-4 right-4 z-50">
-          <div className={`px-3 py-2 rounded-lg text-sm font-medium ${isConnected ? 'bg-green-600' : 'bg-red-600'}`}>
-            {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
-          </div>
-        </div>
+        <NetworkStatus 
+          isConnected={isConnected}
+          isMaster={false}
+          screenId={screenId}
+          position="top-right"
+        />
 
         {/* Full Screen Timer */}
-        <div className="w-full h-full flex items-center justify-center p-8">
+        <div className="w-full h-full flex items-center justify-center p-6 md:p-8">
           <div className="text-center">
-            <Timer 
-              timer={timer} 
-              settings={settings} 
+            <Timer
+              timer={timer}
+              settings={settings}
               getTimerColor={getTimerColor}
               fullscreen={true}
+              showProgress={true}
+              isElementVisible={isElementVisible}
+              timerLabel={timerLabel}
             />
           </div>
         </div>
 
-        {/* Message Overlay for Clients */}
-        <MessageOverlay
-          message={displayMessage}
-          isVisible={!!displayMessage}
-        />
+        {/* Message displayed under timer */}
+        {displayMessage && (
+          <div className="w-full flex items-center justify-center px-6 mb-8">
+            <MessageOverlay
+              message={displayMessage}
+              isVisible={true}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -83,59 +136,105 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
       {/* Header */}
-      <header className="p-4 border-b border-gray-700">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">ST</span>
+      <header className="p-2 sm:p-3 md:p-4 border-b border-gray-700">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm sm:text-base">ST</span>
+              </div>
+              <h1 className="text-lg sm:text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                Stage Timer Pro
+              </h1>
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Stage Timer Pro
-            </h1>
           </div>
-          <div className="text-sm text-gray-400">
+          <div className="text-xs sm:text-sm text-gray-400 text-center mt-1">
             Master Control Station
           </div>
         </div>
       </header>
 
       {/* Network Status */}
-      <NetworkStatus 
+      <NetworkStatus
         isConnected={isConnected}
         connectedClients={connectedClients}
         isMaster={isMaster}
       />
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        <div className="w-full max-w-4xl">
-          {/* Timer Display */}
-          <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-700 mb-8">
-            <Timer 
-              timer={timer} 
-              settings={settings} 
-              getTimerColor={getTimerColor} 
-            />
-          </div>
+      {/* Main Content - Two Columns */}
+      <main className="flex-1 px-2 sm:px-4 py-4 sm:py-6 md:py-8">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 md:gap-6">
+          {/* Left Column: Clock, Timer, Controls, Presets */}
+          <section className="space-y-2 sm:space-y-3 md:space-y-4">
+            {/* Clock */}
+            <div className="bg-gray-800/60 border border-gray-700 rounded-lg sm:rounded-xl p-2 sm:p-3 md:p-4 text-center">
+              <span className="font-digital text-sm sm:text-base md:text-lg text-gray-300">
+                CLOCK: {new Date().toLocaleTimeString()}
+              </span>
+            </div>
+            
+            {/* Timer */}
+            <div className="bg-gray-800/60 border border-gray-700 rounded-lg sm:rounded-xl">
+              <Timer
+                timer={timer}
+                settings={settings}
+                getTimerColor={getTimerColor}
+                isElementVisible={isElementVisible}
+                timerLabel={timerLabel}
+              />
+            </div>
+            
+            {/* Controls */}
+            <div className="bg-gray-800/60 border border-gray-700 rounded-lg sm:rounded-xl">
+              <Controls
+                timer={timer}
+                onStart={startTimer}
+                onPause={pauseTimer}
+                onStop={stopTimer}
+                onReset={handleReset}
+                onLap={handleLap}
+              />
+            </div>
+            
+            {/* Presets and Custom Time */}
+            <div className="bg-gray-800/60 border border-gray-700 rounded-lg sm:rounded-xl">
+              <Presets
+                onSelectPreset={setTime}
+                currentMode={timer.mode}
+              />
+            </div>
 
-          {/* Controls */}
-          <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-700 mb-8">
-            <Controls
-              timer={timer}
-              onStart={startTimer}
-              onPause={pauseTimer}
-              onStop={stopTimer}
-              onReset={resetTimer}
-            />
-          </div>
+            {/* Lap Times */}
+            {timer.mode === 'stopwatch' && (
+              <div className="bg-gray-800/60 border border-gray-700 rounded-lg sm:rounded-xl">
+                <LapTimes
+                  lapTimes={lapTimes}
+                  onClear={clearLaps}
+                />
+              </div>
+            )}
+          </section>
 
-          {/* Presets */}
-          <div>
-            <Presets
-              onSelectPreset={setTime}
-              currentMode={timer.mode}
-            />
-          </div>
+          {/* Right Column: Broadcast Messages, Element Controls */}
+          <section className="space-y-2 sm:space-y-3 md:space-y-4">
+            {/* Broadcast Messages */}
+            <div className="bg-gray-800/60 border border-gray-700 rounded-lg sm:rounded-xl">
+              <BroadcastMessages
+                connectedClients={connectedClients}
+                onSendMessage={masterControl!.sendMessage}
+                onHideMessage={masterControl!.hideMessage}
+              />
+            </div>
+            
+            {/* Master Controls */}
+            <div className="bg-gray-800/60 border border-gray-700 rounded-lg sm:rounded-xl">
+              <MasterControls
+                connectedClients={connectedClients}
+                onShowElement={masterControl!.showElement}
+                onHideElement={masterControl!.hideElement}
+              />
+            </div>
+          </section>
         </div>
       </main>
 
@@ -145,28 +244,12 @@ function App() {
         onSettingsChange={setSettings}
         currentMode={timer.mode}
         onModeChange={setMode}
-        onSetCustomTime={setTime}
-      />
-
-      {/* Master Controls */}
-      <MasterControls
-        connectedClients={connectedClients}
-        onSendMessage={masterControl!.sendMessage}
-        onHideMessage={masterControl!.hideMessage}
-        onShowElement={masterControl!.showElement}
-        onHideElement={masterControl!.hideElement}
+        onSetCustomTime={(seconds: number) => setTime(seconds)}
       />
 
       {/* Footer */}
       <footer className="p-4 text-center text-gray-500 text-sm border-t border-gray-700">
-        <p>Professional Timer System • Built for Live Events & Presentations</p>
-        <p className="mt-1">Master Control - Managing all connected displays</p>
-        <div className="mt-2 text-xs text-gray-600">
-          <p>📖 <strong>Testing Guide:</strong></p>
-          <p>• Open <strong>?mode=client&screenId=screen_1</strong> in new tab for client view</p>
-          <p>• Use Master Controls panel (bottom right) to send messages and control elements</p>
-          <p>• Element visibility controls: Show/Hide timer, controls, presets on client screens</p>
-        </div>
+        <p>Designed by Ohrigina LLC ©2025, All rights reserved • v1.0.0</p>
       </footer>
     </div>
   );

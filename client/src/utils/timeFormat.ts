@@ -1,20 +1,24 @@
-export const formatTime = (seconds: number, showMilliseconds = false): string => {
+export const formatTime = (seconds: number, showMilliseconds = false, showHours = false): string => {
   const absSeconds = Math.abs(seconds);
   const hours = Math.floor(absSeconds / 3600);
   const minutes = Math.floor((absSeconds % 3600) / 60);
   const secs = Math.floor(absSeconds % 60);
-  const milliseconds = Math.floor((absSeconds % 1) * 100);
+  const centiseconds = Math.round((absSeconds % 1) * 100);
 
   const sign = seconds < 0 ? '-' : '';
 
-  if (hours > 0) {
-    return `${sign}${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  if (showHours || hours > 0) {
+    const timeStr = `${sign}${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (showMilliseconds) {
+      return `${timeStr}.${Math.min(99, centiseconds).toString().padStart(2, '0')}`;
+    }
+    return timeStr;
   }
 
   const timeStr = `${sign}${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   
   if (showMilliseconds) {
-    return `${timeStr}.${milliseconds.toString().padStart(2, '0')}`;
+    return `${timeStr}.${Math.min(99, centiseconds).toString().padStart(2, '0')}`;
   }
   
   return timeStr;

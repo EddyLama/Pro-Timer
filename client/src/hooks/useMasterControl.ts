@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { playStartSound, playWarnSound, playEndSound, playCountdownSequence } from '../utils/sound';
 import { TimerState, TimerSettings } from '../types/timer';
 import { MasterService } from '../services/MasterService';
 
@@ -24,42 +25,70 @@ export const useMasterControl = (initialSettings: TimerSettings) => {
 
         let newTime: number;
         if (prev.mode === 'countdown') {
-          newTime = Math.max(0, prev.currentTime - 0.1);
-          if (newTime <= 0) {
+          newTime = prev.currentTime - 0.01;
+          
+          // Only stop if overtime is not allowed and we hit 0
+          if (newTime <= 0 && !settings.allowOvertime) {
+            newTime = 0;
             // Timer finished, stop and notify clients
             masterService.stopTimer();
+            if (settings.soundsEnabled) {
+              playEndSound();
+            }
             return { ...prev, currentTime: 0, isRunning: false };
           }
         } else {
-          newTime = prev.currentTime + 0.1;
+          newTime = prev.currentTime + 0.01;
         }
 
-        // Broadcast timer updates to all clients every second
-        if (Math.floor(newTime * 10) % 10 === 0) {
+        // Broadcast timer updates to all clients every 100ms for smooth milliseconds
+        if (Math.floor(newTime * 100) % 10 === 0) {
           masterService.syncTimerState(newTime, prev.initialTime, true, prev.mode);
+        }
+
+        // Play warning sound once when crossing thresholds
+        if (settings.soundsEnabled && prev.mode === 'countdown') {
+          const justCrossedDanger = prev.currentTime > settings.dangerThreshold && newTime <= settings.dangerThreshold;
+          const justCrossedWarning = prev.currentTime > settings.warningThreshold && newTime <= settings.warningThreshold;
+          if (justCrossedDanger || justCrossedWarning) {
+            playWarnSound();
+          }
         }
 
         return { ...prev, currentTime: newTime };
       });
-    }, 100);
+    }, 10);
 
     return () => clearInterval(interval);
-  }, [timer.isRunning, masterService]);
+  }, [timer.isRunning, masterService, settings.soundsEnabled, settings.warningThreshold, settings.dangerThreshold, settings.allowOvertime]);
 
   // Periodically update connected clients list
   useEffect(() => {
     const interval = setInterval(() => {
       const clients = masterService.getConnectedClients();
-      setConnectedClients(clients.map(client => client.screenId));
+      const ids = clients.map(client => client.screenId);
+      // Deduplicate screens
+      setConnectedClients(Array.from(new Set(ids)));
     }, 1000);
 
     return () => clearInterval(interval);
   }, [masterService]);
 
   const startTimer = useCallback(async () => {
-    setTimer(prev => ({ ...prev, isRunning: true }));
-    await masterService.startTimer();
-  }, [masterService]);
+    // Start 3-second countdown with beeps
+    if (settings.soundsEnabled) {
+      playCountdownSequence();
+    }
+    
+    // Wait 3 seconds before actually starting
+    setTimeout(() => {
+      setTimer(prev => ({ ...prev, isRunning: true }));
+      if (settings.soundsEnabled) {
+        playStartSound();
+      }
+      masterService.startTimer();
+    }, 3000);
+  }, [masterService, settings.soundsEnabled]);
 
   const pauseTimer = useCallback(async () => {
     setTimer(prev => ({ ...prev, isRunning: false }));
@@ -73,7 +102,10 @@ export const useMasterControl = (initialSettings: TimerSettings) => {
       currentTime: prev.mode === 'countdown' ? prev.initialTime : 0
     }));
     await masterService.stopTimer();
-  }, [masterService]);
+    if (settings.soundsEnabled) {
+      playEndSound();
+    }
+  }, [masterService, settings.soundsEnabled]);
 
   const resetTimer = useCallback(async () => {
     setTimer(prev => ({
@@ -84,14 +116,14 @@ export const useMasterControl = (initialSettings: TimerSettings) => {
     await masterService.resetTimer();
   }, [masterService]);
 
-  const setTime = useCallback(async (seconds: number) => {
+  const setTime = useCallback(async (seconds: number, label?: string) => {
     setTimer(prev => ({
       ...prev,
       currentTime: seconds,
       initialTime: seconds,
       isRunning: false
     }));
-    await masterService.setTime(seconds);
+    await masterService.setTime(seconds, label);
   }, [masterService]);
 
   const setMode = useCallback(async (mode: 'countdown' | 'stopwatch') => {

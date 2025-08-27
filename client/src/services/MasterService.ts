@@ -101,10 +101,10 @@ export class MasterService {
     await this.makeApiCall('/timer/reset');
   }
 
-  async setTime(seconds: number) {
+  async setTime(seconds: number, label?: string) {
     this.state.globalTimer.currentTime = seconds;
     this.state.globalTimer.initialTime = seconds;
-    await this.makeApiCall('/timer/set-time', { seconds });
+    await this.makeApiCall('/timer/set-time', { seconds, label });
   }
 
   async setMode(mode: 'countdown' | 'stopwatch') {

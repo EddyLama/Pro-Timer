@@ -9,7 +9,10 @@ export interface TimerSettings {
   warningThreshold: number; // seconds
   dangerThreshold: number; // seconds
   showMilliseconds: boolean;
+  showHours: boolean;
   autoReset: boolean;
+  allowOvertime: boolean;
+  soundsEnabled?: boolean;
 }
 
 export interface PresetTime {
